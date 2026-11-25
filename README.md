@@ -8,7 +8,7 @@ Persönlicher Englisch-Trainer als Web-App: Vokabel-Kartei mit Schreiben und Lü
 
 Auf der Übersicht unter **⚙️ Einstellungen**:
 
-- **Feedback (kostenlos):** „Feedback in Claude holen“ öffnet einen neuen Claude-Chat, in dem Aufgabe, eigener Text und ein festes Bewertungsschema schon eingetragen sind (läuft über das normale Claude-Abo). Wahlweise in der Claude-App oder im Browser. Optional geht auch ein eigener Anthropic-API-Key für Feedback direkt in der App.
+- **Feedback (kostenlos):** „Feedback in Claude holen“ schickt die Übung an Claude (normales Claude-Abo). Entweder jedes Mal ein neuer Chat mit vorausgefülltem Text, oder – empfohlen – immer dasselbe Coach-Projekt bzw. derselbe Coach-Chat: Link einmal unter Einstellungen eintragen, die App kopiert den Text und öffnet den Coach, dort nur noch einfügen und senden. Der Knopf „Coach-Anweisungen kopieren“ liefert die Projekt-Anweisungen.
 - **Sync zwischen Geräten (kostenlos):** einen GitHub-Token mit dem Recht `gist` eintragen. Der Lernstand liegt dann in einem privaten Gist und ist auf allen Geräten gleich.
 - **Fortschritt übertragen:** Export/Import, z. B. um den Lernstand aus der Claude-Artefakt-Version zu übernehmen.
 

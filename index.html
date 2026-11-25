@@ -2466,11 +2466,35 @@ async function syncPull(){
 
 
 // ── FEEDBACK IN CLAUDE (Web-App ohne API-Key) ──
-// Baut einen Coaching-Prompt mit allem Kontext (Lerner, Aufgabe, Text, Bewertungsschema) und oeffnet damit einen neuen Claude-Chat.
+// Ziel: neuer Chat (Text vorausgefuellt) ODER immer derselbe Chat / dasselbe Projekt (Text kopiert, dort einfuegen).
+// Ziel-Einstellung liegt in M.fb und wird damit ueber den Gist-Sync auf alle Geraete uebertragen.
 const CLM='et7_claudeapp';
 const IS_MOBILE=/iPhone|iPad|Android/i.test(navigator.userAgent||'')||(/Mac/i.test(navigator.platform||'')&&navigator.maxTouchPoints>1);
 function claudeTarget(){const v=lsGet(CLM);if(v==='app'||v==='web')return v;return /Mac|Win/i.test(navigator.platform||'')&&!IS_MOBILE?'app':'web'}
+function fbCfg(){const f=(M&&M.fb)||{};const ok=f.id&&(f.type==='chat'||f.type==='project');return {mode:ok&&f.mode!=='new'?f.type:'new',type:f.type,id:f.id}}
+function parseClaudeLink(s){const m=String(s||'').match(/claude\.ai\/(chat|project)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);return m?{type:m[1].toLowerCase(),id:m[2].toLowerCase()}:null}
 const LEARNER='Du bist mein Englisch-Coach. Ich bin deutscher Muttersprachler, Niveau etwa B2 (Grammatik und Lesen sind okay), und will vor allem freier und sicherer sprechen – im Job (Industrie/Technik, Angebote, Meetings) und im Alltag. Ich übe mit meinem eigenen „English Trainer“.';
+const DS_SCHEMA=`1. **Gesamtnote 1–10** und je ein kurzer Satz zu Grammatik, Wortschatz, Natürlichkeit und Verständlichkeit. Bei Umschreiben-Übungen: welches Wort ein Zuhörer wohl erraten würde.
+2. **Fehler** als Tabelle: Mein Text | Richtig | Warum (kurz auf Deutsch). Nur echte Fehler und typisch deutsch klingende Formulierungen – erfinde keine.
+3. **So sagt es ein Muttersprachler:** mein Text als natürliches, flüssiges Englisch (gleicher Inhalt, ähnliche Länge).
+4. **3–5 nützliche Wörter oder Wendungen** zum Thema, die ich nicht benutzt habe, mit deutscher Bedeutung.
+5. **Ein konkreter Tipp** fürs Sprechen.
+6. Zum Schluss eine kurze **Anschlussfrage auf Englisch**, damit ich direkt weiterüben kann – meine Antwort darauf korrigierst du wieder genauso.`;
+const GR_SCHEMA=`1. Klar sagen: **richtig oder falsch?** Wenn falsch: korrigierte Version und warum (kurz auf Deutsch, mit Bezug auf die Regel).
+2. Wie ein Muttersprachler es **natürlich** sagen würde – falls das anders ist.
+3. **3 neue Übungssätze** auf Deutsch zu genau dieser Regel zum Übersetzen. Auf meine Antworten warten und sie dann korrigieren.`;
+const COACH_SETUP=`${LEARNER}
+
+Ich schicke dir hier immer wieder Übungen aus meinem Trainer. Es gibt zwei Arten:
+
+**A) Beschreiben / Umschreiben** („\u{1F4DD} Neue Übung“): Ich erkläre etwas in eigenen Worten auf Englisch. Bewerte dann immer so:
+${DS_SCHEMA}
+
+**B) Grammatik-Check** („\u{1F4D0} Grammatik-Check“): Ich bilde einen eigenen Satz zu einer Grammatik-Regel. Antworte dann immer so:
+${GR_SCHEMA}
+
+Erklärungen immer auf Deutsch, Beispiele auf Englisch. Sei ermutigend, aber ehrlich. Merk dir über die Übungen hinweg, welche Fehler ich oft mache, und weise mich darauf hin, wenn sie wieder auftauchen.`;
+
 function copySync(text){
   try{const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:-1000px;opacity:0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(ok)return true}catch(e){}
   try{navigator.clipboard.writeText(text);return true}catch(e){}
@@ -2478,13 +2502,20 @@ function copySync(text){
 }
 function openClaude(prompt){
   const copied=copySync(prompt);
-  const q=encodeURIComponent(prompt.slice(0,13000));
-  if(claudeTarget()==='app')location.href='claude://claude.ai/new?q='+q;
-  else window.open('https://claude.ai/new?q='+q,'_blank','noopener');
+  const c=fbCfg(),app=claudeTarget()==='app',base=app?'claude://claude.ai/':'https://claude.ai/';
+  const url=c.mode==='new'?base+'new?q='+encodeURIComponent(prompt.slice(0,13000)):base+c.type+'/'+c.id;
+  if(app)location.href=url;else window.open(url,'_blank','noopener');
   return copied;
 }
 function handoffNote(copied,prompt,nextId){
-  return `<div class="fbk"><h4>\u{1F4AC} In Claude geöffnet</h4><p>Deine Aufgabe, dein Text und das Bewertungsschema stehen schon im Eingabefeld – nur noch <b>senden</b>. ${copied?'Falls das Feld leer ist: einfach einfügen (⌘V bzw. lange tippen → Einsetzen), der Text ist kopiert.':''}</p>
+  const c=fbCfg();
+  const paste=IS_MOBILE?'ins Eingabefeld tippen → <b>Einsetzen</b>':'<b>⌘V</b> drücken';
+  const body=c.mode==='new'
+    ?`Deine Aufgabe, dein Text und das Bewertungsschema stehen schon im Eingabefeld – nur noch <b>senden</b>.${copied?' Falls das Feld leer ist: '+paste+', der Text ist kopiert.':''}`
+    :copied
+      ?`Dein ${c.mode==='chat'?'Coach-Chat':'Coach-Projekt'} ist offen und der Text ist kopiert: ${c.mode==='project'?'Chat im Projekt öffnen (neu oder den letzten), dann ':''}${paste} und senden.`
+      :`Dein ${c.mode==='chat'?'Coach-Chat':'Coach-Projekt'} ist offen. Kopieren hat nicht geklappt – tipp auf „Text kopieren“ und füge ihn dort ein.`;
+  return `<div class="fbk"><h4>\u{1F4AC} Claude geöffnet</h4><p>${body}</p>
   <div class="dsbtns" style="margin-top:12px;margin-bottom:0"><button class="btn-g" data-ho="open">↗ Nochmal öffnen</button><button class="btn-g" data-ho="copy">\u{1F4CB} Text kopieren</button>${nextId?`<button class="wr-check" id="${nextId}">Nächste Aufgabe →</button>`:''}</div></div>`;
 }
 function wireHandoff(box,prompt){
@@ -2494,45 +2525,60 @@ function wireHandoff(box,prompt){
   });
 }
 function dsPrompt(t,txt){
-  const isT=t.c==='taboo';
+  const isT=t.c==='taboo',full=fbCfg().mode==='new';
   const task=isT
-    ?`Übung „Umschreiben“: Ich soll das englische Wort „${t.word}“ auf Englisch erklären, OHNE es selbst zu benutzen, so dass jemand es erraten kann.`
-    :`Übung „Beschreiben“ (Dinge in eigenen Worten erklären, ohne nachzuschlagen).\nThema: ${t.de}${t.en?' (Englisch: '+t.en+')':''}\nAufgabe: ${t.task}${t.h&&t.h.length?'\nMögliche Hilfswörter: '+t.h.join(', '):''}`;
-  return `${LEARNER}
-
-${task}
-
-Mein Text:
-"""
-${txt}
-"""
-
-Bitte bewerte das so:
-1. **Gesamtnote 1–10** und je ein kurzer Satz zu Grammatik, Wortschatz, Natürlichkeit und Verständlichkeit.${isT?'\n   Sag auch, welches Wort ein Zuhörer wohl erraten würde und ob meine Erklärung funktioniert.':''}
-2. **Fehler** als Tabelle: Mein Text | Richtig | Warum (kurz auf Deutsch). Nur echte Fehler und typisch deutsch klingende Formulierungen – erfinde keine.
-3. **So sagt es ein Muttersprachler:** mein Text als natürliches, flüssiges Englisch (gleicher Inhalt, ähnliche Länge).
-4. **3–5 nützliche Wörter oder Wendungen** zum Thema, die ich nicht benutzt habe, mit deutscher Bedeutung.
-5. **Ein konkreter Tipp** fürs Sprechen.
-
-Erklärungen auf Deutsch, Beispiele auf Englisch. Sei ermutigend, aber ehrlich.
-Stell mir zum Schluss eine kurze Anschlussfrage auf Englisch zum Thema, damit ich direkt weiterüben kann – und korrigiere meine Antwort darauf wieder genauso.`;
+    ?`Umschreiben: Ich soll das englische Wort „${t.word}“ auf Englisch erklären, OHNE es selbst zu benutzen, so dass jemand es erraten kann.`
+    :`Thema: ${t.de}${t.en?' (Englisch: '+t.en+')':''}\nAufgabe: ${t.task}${t.h&&t.h.length?'\nMögliche Hilfswörter: '+t.h.join(', '):''}`;
+  const core=`\u{1F4DD} Neue Übung – ${isT?'Umschreiben':'Beschreiben'}\n${task}\n\nMein Text:\n"""\n${txt}\n"""`;
+  return full
+    ?`${LEARNER}\n\n${core}\n\nBitte bewerte das so:\n${DS_SCHEMA}\n\nErklärungen auf Deutsch, Beispiele auf Englisch. Sei ermutigend, aber ehrlich.`
+    :`${core}\n\nBitte wie immer bewerten (Note, Fehlertabelle, Muttersprachler-Version, neue Wörter, Tipp, Anschlussfrage).`;
 }
 function grPrompt(l,txt){
+  const full=fbCfg().mode==='new';
   const rules=l.b.filter(x=>x.tip||x.p||x.bad).map(x=>x.bad?'Falsch: '+grStrip(x.bad)+' → Richtig: '+grStrip(x.good):grStrip(x.tip||x.p)).join('\n- ');
-  return `${LEARNER}
-
-Ich übe gerade die Grammatik-Lektion „${l.t}“ (${l.sub}). Die wichtigsten Regeln daraus:
-- ${rules}
-
-Ich habe dazu einen eigenen Satz gebildet:
-"""
-${txt}
-"""
-
-Bitte:
-1. Sag mir klar: **richtig oder falsch?** Wenn falsch, die korrigierte Version und warum (kurz auf Deutsch, mit Bezug auf die Regel).
-2. Zeig mir, wie ein Muttersprachler das **natürlich** sagen würde – falls das anders ist.
-3. Gib mir **3 neue Übungssätze** auf Deutsch zu genau dieser Regel, die ich übersetzen soll. Warte auf meine Antworten und korrigiere sie dann.`;
+  const core=`\u{1F4D0} Grammatik-Check – Lektion „${l.t}“ (${l.sub})\nRegeln:\n- ${rules}\n\nMein Satz:\n"""\n${txt}\n"""`;
+  return full
+    ?`${LEARNER}\n\n${core}\n\nBitte:\n${GR_SCHEMA}`
+    :`${core}\n\nBitte wie immer: richtig/falsch mit Korrektur, natürliche Version, 3 neue Übungssätze.`;
+}
+function fbSettingsHTML(){
+  const c=fbCfg(),f=(M&&M.fb)||{},link=f.id?`https://claude.ai/${f.type}/${f.id}`:'';
+  return `
+      <div class="vb-hint" style="margin:4px 0 8px">„Feedback in Claude holen“ läuft über dein Claude-Abo, ohne Zusatzkosten.</div>
+      <div class="vb-row" style="margin-bottom:8px">
+        <select class="sel" id="st-fbmode">
+          <option value="new"${c.mode==='new'?' selected':''}>Jedes Mal neuer Chat (Text vorausgefüllt)</option>
+          <option value="fixed"${c.mode!=='new'||(f.mode==='fixed'&&!f.id)?' selected':''}>Immer mein Coach-Chat / -Projekt</option>
+        </select>
+        <select class="sel" id="st-claude"><option value="app"${claudeTarget()==='app'?' selected':''}>In der Claude-App</option><option value="web"${claudeTarget()==='web'?' selected':''}>Im Browser (claude.ai)</option></select>
+      </div>
+      <div id="st-fbfixed" style="display:${c.mode!=='new'||f.mode==='fixed'?'block':'none'}">
+        <div class="vb-hint" style="margin-bottom:8px"><b>Einmal einrichten:</b><br>
+          <b>Variante Projekt</b> (empfohlen): In Claude ein Projekt „English Coach“ anlegen, die Coach-Anweisungen (Knopf unten) bei <i>Anweisungen</i> einfügen, dann den Link des Projekts hier eintragen.<br>
+          <b>Variante Chat:</b> Neuen Chat starten, die Coach-Anweisungen als erste Nachricht schicken, dann den Link dieses Chats hier eintragen.</div>
+        <div class="vb-row"><input class="brsearch" id="st-fblink" placeholder="https://claude.ai/project/… oder https://claude.ai/chat/…" value="${esc(link)}" autocomplete="off"><button class="btn-g" id="st-fbsave">Speichern</button></div>
+        <div class="vb-row" style="margin-top:8px"><button class="btn-g" id="st-fbsetup">\u{1F4CB} Coach-Anweisungen kopieren</button>${c.mode!=='new'?'<button class="btn-g" id="st-fbopen">↗ Coach öffnen</button>':''}</div>
+        <div class="st-msg" id="st-fbmsg">${c.mode!=='new'?'✅ Verbunden mit deinem Coach-'+(c.type==='chat'?'Chat':'Projekt')+'.':''}</div>
+      </div>`;
+}
+function wireFbSettings(){
+  if(!g('st-fbmode'))return;
+  const msg=(t,ok)=>{const m=g('st-fbmsg');m.textContent=t;m.style.color=ok?'var(--gn)':'var(--rd)'};
+  g('st-claude').onchange=e=>lsSet(CLM,e.target.value);
+  g('st-fbmode').onchange=e=>{
+    const fixed=e.target.value==='fixed';
+    M.fb=Object.assign({},M.fb||{},{mode:fixed?'fixed':'new'});saveM();
+    g('st-fbfixed').style.display=fixed?'block':'none';
+  };
+  g('st-fbsave').onclick=()=>{
+    const L=parseClaudeLink(g('st-fblink').value);
+    if(!L){msg('Das ist kein Claude-Link. Er muss so aussehen: https://claude.ai/project/… oder https://claude.ai/chat/…');return}
+    M.fb={mode:'fixed',type:L.type,id:L.id};saveM();
+    msg('✅ Gespeichert – Feedback landet ab jetzt immer in deinem Coach-'+(L.type==='chat'?'Chat':'Projekt')+'.',true);
+  };
+  g('st-fbsetup').onclick=()=>{const ok=copySync(COACH_SETUP);msg(ok?'✅ Coach-Anweisungen kopiert – jetzt in Claude einfügen.':'Kopieren ging nicht.',ok)};
+  if(g('st-fbopen'))g('st-fbopen').onclick=()=>{const c=fbCfg(),app=claudeTarget()==='app',u=(app?'claude://claude.ai/':'https://claude.ai/')+c.type+'/'+c.id;if(app)location.href=u;else window.open(u,'_blank','noopener')};
 }
 
 // ── EINSTELLUNGEN: Web-App (API-Key, Sync) + Fortschritt übertragen ──
@@ -2546,8 +2592,7 @@ function renderSettings(){
     h+=`
     <div class="st-sec">
       <div class="st-h">\u{1F916} Feedback <span class="st-ok">${hasKey?'Claude-API aktiv':'\u00fcber Claude'}</span></div>
-      <div class="vb-hint" style="margin:4px 0 8px">${hasKey?'Feedback kommt direkt in der App \u00fcber deinen API-Key.':'\u201eFeedback in Claude holen\u201c \u00f6ffnet einen neuen Claude-Chat mit deiner Aufgabe, deinem Text und einem festen Bewertungsschema \u2013 \u00fcber dein Claude-Abo, ohne Zusatzkosten.'}</div>
-      ${hasKey?'':`<div class="vb-row" style="margin-bottom:8px"><select class="sel" id="st-claude"><option value="app"${claudeTarget()==='app'?' selected':''}>In der Claude-App \u00f6ffnen</option><option value="web"${claudeTarget()==='web'?' selected':''}>Im Browser (claude.ai) \u00f6ffnen</option></select></div>`}
+      ${hasKey?'<div class="vb-hint" style="margin:4px 0 8px">Feedback kommt direkt in der App \u00fcber deinen API-Key.</div>':fbSettingsHTML()}
       <details class="st-adv"${hasKey?' open':''}><summary>Optional: eigener Anthropic-API-Key (kostenpflichtig)</summary>
       <div class="vb-hint" style="margin:6px 0 8px">Dann kommt das ausf\u00fchrliche Feedback direkt in der App. Key unter <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, wird nur auf diesem Ger\u00e4t gespeichert.</div>
       <div class="vb-row"><input class="brsearch" type="password" id="st-key" placeholder="${hasKey?'\u2022\u2022\u2022\u2022\u2022\u2022 gespeichert \u2013 neuen Key einf\u00fcgen zum \u00c4ndern':'sk-ant-\u2026'}" autocomplete="off"><button class="btn-g" id="st-key-save">Speichern</button>${hasKey?'<button class="btn-g" id="st-key-test">Testen</button><button class="btn-g" id="st-key-del">Entfernen</button>':''}</div>
@@ -2573,7 +2618,7 @@ function renderSettings(){
     const K=window.ET_web.keys;
     const msg=(id,t,ok)=>{const m=g(id);m.textContent=t;m.style.color=ok?'var(--gn)':'var(--rd)'};
     g('st-key-save').onclick=()=>{const v=g('st-key').value.trim();if(!/^sk-ant-/.test(v)){msg('st-key-msg','Das sieht nicht wie ein Anthropic-Key aus (beginnt mit sk-ant-).');return}lsSet(K.KK,v);msg('st-key-msg','Gespeichert – die Seite lädt neu …',true);setTimeout(()=>location.reload(),600)};
-    if(g('st-claude'))g('st-claude').onchange=e=>lsSet(CLM,e.target.value);
+    wireFbSettings();
     if(g('st-key-test'))g('st-key-test').onclick=async()=>{msg('st-key-msg','Teste …',true);try{const r=await window.ET_web.ask('Reply with exactly: OK',{modelTier:'quick',maxTokens:10});msg('st-key-msg','✅ Funktioniert ('+String(r.text).trim().slice(0,20)+')',true)}catch(e){msg('st-key-msg','❌ '+(e.message||'Fehler'))}};
     if(g('st-key-del'))g('st-key-del').onclick=()=>{lsSet(K.KK,null);location.reload()};
     g('st-tok-save').onclick=async()=>{
