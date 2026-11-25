@@ -8,7 +8,7 @@ Persönlicher Englisch-Trainer als Web-App: Vokabel-Kartei mit Schreiben und Lü
 
 Auf der Übersicht unter **⚙️ Einstellungen**:
 
-- **Feedback (kostenlos):** Beim Beschreiben und im Grammatik-Satzcheck prüft LanguageTool Grammatik und Rechtschreibung. Ein Knopf öffnet Claude mit dem Text vorausgefüllt für ausführliches Feedback (über das normale Claude-Abo). Optional geht auch ein eigener Anthropic-API-Key.
+- **Feedback (kostenlos):** „Feedback in Claude holen“ öffnet einen neuen Claude-Chat, in dem Aufgabe, eigener Text und ein festes Bewertungsschema schon eingetragen sind (läuft über das normale Claude-Abo). Wahlweise in der Claude-App oder im Browser. Optional geht auch ein eigener Anthropic-API-Key für Feedback direkt in der App.
 - **Sync zwischen Geräten (kostenlos):** einen GitHub-Token mit dem Recht `gist` eintragen. Der Lernstand liegt dann in einem privaten Gist und ist auf allen Geräten gleich.
 - **Fortschritt übertragen:** Export/Import, z. B. um den Lernstand aus der Claude-Artefakt-Version zu übernehmen.
 

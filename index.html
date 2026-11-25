@@ -443,40 +443,6 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   });
 
 
-  // Kostenloser Modus ohne API-Key: Grammatik-Check ueber LanguageTool + Link, der Claude mit dem Text vorbefuellt oeffnet
-  async function ltCheck(text){
-    let r;
-    try{r=await fetch('https://api.languagetool.org/v2/check',{method:'POST',body:new URLSearchParams({text,language:'en-GB',motherTongue:'de-DE'})})}
-    catch(e){throw err('network','Keine Verbindung zum Grammatik-Check')}
-    if(r.status===429)throw err('rate_limited','Zu viele Anfragen');
-    if(!r.ok)throw err('lt_'+r.status,'Grammatik-Check nicht erreichbar ('+r.status+')');
-    return r.json();
-  }
-  const freeSample=Object.assign(async()=>{throw err('not_supported','Nur Textprüfung')},{free:true,
-    json:async input=>{
-      const p=typeof input==='string'?input:(input||[]).map(x=>x.content).join('\n');
-      const mm=p.match(/"""([\s\S]*?)"""/);
-      if(!mm)throw err('not_supported','Nur Textprüfung möglich');
-      const text=mm[1].trim();
-      const res=await ltCheck(text);
-      const ms=(res.matches||[]).slice(0,8);
-      let corrected=text;
-      [...ms].sort((a,b)=>b.offset-a.offset).forEach(x=>{const rep=(x.replacements||[])[0];if(rep)corrected=corrected.slice(0,x.offset)+rep.value+corrected.slice(x.offset+x.length)});
-      const corrections=ms.map(x=>({wrong:text.substr(x.offset,x.length),right:((x.replacements||[])[0]||{}).value||'(umformulieren)',why:x.message||''}));
-      const ex=p.match(/Exercise: (.*)/),gl=p.match(/Grammar lesson: (.*)/);
-      const task=ex?'Meine Übung: '+ex[1]:gl?'Ich übe gerade diese Grammatik-Regel: '+gl[1]:'';
-      const cp=`Ich bin Deutscher und lerne Englisch (etwa B2), vor allem fürs Sprechen im Job. ${task}\n\nMein Text:\n"${text}"\n\nBitte korrigiere meine Fehler, erkläre sie kurz auf Deutsch und zeig mir, wie ein Muttersprachler das natürlich sagen würde. Nenn mir außerdem 3 nützliche Wörter oder Wendungen zum Thema.`;
-      const n=corrections.length;
-      return {
-        summary:n?n+(n===1?' möglicher Fehler':' mögliche Fehler')+' gefunden (automatischer Grammatik-Check).':'Keine Grammatik- oder Rechtschreibfehler gefunden. Satzstellung und natürliche Formulierung prüft der Gratis-Check nur teilweise – im Zweifel ausführliches Feedback in Claude holen.',
-        corrections,better:corrected!==text?corrected:'',words:[],
-        tip:'Der Gratis-Check findet Grammatik und Rechtschreibung. Ob es natürlich klingt und welche Wörter besser passen, sagt dir das ausführliche Feedback in Claude.',
-        correct:n===0,corrected,
-        explanation:n?corrections.map(c=>'„'+c.wrong+'“ → „'+c.right+'“: '+c.why).join(' · '):'Der automatische Check hat keine Fehler gefunden. Satzstellung (z.\u00a0B. wo die Zeit steht) erkennt er aber nicht immer – im Zweifel ausführliches Feedback in Claude holen.',
-        alternative:'',_claude:'https://claude.ai/new?q='+encodeURIComponent(cp)
-      };
-    }});
-
   async function gh(path,method,body){
     const r=await fetch('https://api.github.com'+path,{method:method||'GET',cache:'no-store',headers:Object.assign({
       'Authorization':'Bearer '+ls(GT),'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},body?{'Content-Type':'application/json'}:{}),
@@ -509,8 +475,9 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   })};
 
   window.ET_web={ask,gh,findGist,keys:{KK,GT,GI}};
+  window.ET_HANDOFF=!ls(KK);
   window.claude={use:async name=>{
-    if(name==='sample')return ls(KK)?sample:freeSample;
+    if(name==='sample')return ls(KK)?sample:null;
     if(name==='db')return ls(GT)?db:null;
     if(name==='user')return ls(GT)?{id:async()=>'me'}:null;
     return null;
@@ -1559,7 +1526,7 @@ function renderDS(){
     <textarea class="dsta" id="ds-in" placeholder="Schreib auf Englisch \u2013 3 bis 6 S\u00e4tze. Wenn dir ein Wort fehlt: umschreiben statt nachschlagen!"></textarea>
     <div class="dsmeta"><span id="ds-wc">0 W\u00f6rter</span><span>Tipp: lies es danach laut vor</span></div>
     <div class="dsbtns">
-      <button class="wr-check" id="ds-check">${dsSample?'\u2705 Feedback holen':'\u2705 Fertig'}</button>
+      <button class="wr-check" id="ds-check">${window.ET_HANDOFF?'\u{1F4AC} Feedback in Claude holen':dsSample?'\u2705 Feedback holen':'\u2705 Fertig'}</button>
       <button class="btn-g" id="ds-mic">\u{1F3A4} Diktieren</button>
       ${!isT&&t.h&&t.h.length?'<button class="btn-g" id="ds-hint">\u{1F4A1} Hilfsw\u00f6rter</button>':''}
       ${!isT&&t.en?'<button class="btn-g" id="ds-showen">\u{1F524} Englisches Wort</button>':''}
@@ -1587,6 +1554,13 @@ async function checkDS(){
   const t=dsCur,isT=t.c==='taboo';
   let tabooWarn='';
   if(isT){const re=new RegExp('\\b'+t.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');if(re.test(txt))tabooWarn='<div class="warn">\u26A0\uFE0F Du hast das Wort \u201e'+s_(t.word)+'\u201c selbst benutzt \u2013 versuch es nochmal ohne.</div>';}
+  if(window.ET_HANDOFF){
+    const pr=dsPrompt(t,txt);const copied=openClaude(pr);
+    countDS();
+    fb.innerHTML=tabooWarn+handoffNote(copied,pr,'ds-next');
+    wireHandoff(fb,pr);g('ds-next').onclick=newDS;
+    return;
+  }
   if(!dsSample){
     countDS();
     fb.innerHTML=tabooWarn+selfCheckHTML(t);
@@ -2165,14 +2139,15 @@ function grResult(ok,x,extra){
 }
 function renderOwn(l){
   const el=g('gr-own');if(!el)return;
-  if(!dsSample){el.innerHTML='';return}
-  el.innerHTML=`<div class="lbl" style="margin-top:28px">\u{1F5E3}️ Eigenen Satz bilden</div><div class="dscard" style="padding:16px 20px"><div class="dstask">Bilde einen eigenen Satz mit der Regel aus dieser Lektion – am besten etwas, das du wirklich sagen würdest. Claude prüft ihn und erklärt dir Fehler.</div></div><textarea class="dsta" id="gr-own-in" style="min-height:84px" placeholder="z. B. ${grAtt(l.own||'')}"></textarea><div class="dsbtns" style="margin-top:10px"><button class="wr-check" id="gr-own-go">✅ Satz prüfen</button></div><div id="gr-own-fb"></div>`;
+  if(!dsSample&&!window.ET_HANDOFF){el.innerHTML='';return}
+  el.innerHTML=`<div class="lbl" style="margin-top:28px">\u{1F5E3}️ Eigenen Satz bilden</div><div class="dscard" style="padding:16px 20px"><div class="dstask">Bilde einen eigenen Satz mit der Regel aus dieser Lektion – am besten etwas, das du wirklich sagen würdest. Claude prüft ihn und erklärt dir Fehler.</div></div><textarea class="dsta" id="gr-own-in" style="min-height:84px" placeholder="z. B. ${grAtt(l.own||'')}"></textarea><div class="dsbtns" style="margin-top:10px"><button class="wr-check" id="gr-own-go">${window.ET_HANDOFF?'\u{1F4AC} In Claude prüfen lassen':'✅ Satz prüfen'}</button></div><div id="gr-own-fb"></div>`;
   g('gr-own-go').onclick=()=>checkOwn(l);
 }
 function grOwnRefresh(){if(grCur&&grCur!=='mix'){const el=g('gr-own');if(el&&!el.innerHTML)renderOwn(GL.find(l=>l.id===grCur))}}
 async function checkOwn(l){
   const txt=(g('gr-own-in').value||'').trim();const fb=g('gr-own-fb');
   if((txt.match(/\S+/g)||[]).length<3){fb.innerHTML='<div class="warn">Schreib einen ganzen Satz (mindestens drei Wörter).</div>';return}
+  if(window.ET_HANDOFF){const pr=grPrompt(l,txt);const copied=openClaude(pr);bumpDay(true);fb.innerHTML=handoffNote(copied,pr,null);wireHandoff(fb,pr);return}
   if(!dsSample||grBusy)return;grBusy=true;const btn=g('gr-own-go');btn.disabled=true;
   fb.innerHTML='<div class="dsnote">\u{1F914} Claude prüft deinen Satz …</div>';
   const rules=l.b.filter(x=>x.tip||x.p).map(x=>grStrip(x.tip||x.p)).join(' ').slice(0,900);
@@ -2490,6 +2465,76 @@ async function syncPull(){
 })();
 
 
+// ── FEEDBACK IN CLAUDE (Web-App ohne API-Key) ──
+// Baut einen Coaching-Prompt mit allem Kontext (Lerner, Aufgabe, Text, Bewertungsschema) und oeffnet damit einen neuen Claude-Chat.
+const CLM='et7_claudeapp';
+const IS_MOBILE=/iPhone|iPad|Android/i.test(navigator.userAgent||'')||(/Mac/i.test(navigator.platform||'')&&navigator.maxTouchPoints>1);
+function claudeTarget(){const v=lsGet(CLM);if(v==='app'||v==='web')return v;return /Mac|Win/i.test(navigator.platform||'')&&!IS_MOBILE?'app':'web'}
+const LEARNER='Du bist mein Englisch-Coach. Ich bin deutscher Muttersprachler, Niveau etwa B2 (Grammatik und Lesen sind okay), und will vor allem freier und sicherer sprechen – im Job (Industrie/Technik, Angebote, Meetings) und im Alltag. Ich übe mit meinem eigenen „English Trainer“.';
+function copySync(text){
+  try{const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:-1000px;opacity:0';document.body.appendChild(ta);ta.select();const ok=document.execCommand('copy');ta.remove();if(ok)return true}catch(e){}
+  try{navigator.clipboard.writeText(text);return true}catch(e){}
+  return false;
+}
+function openClaude(prompt){
+  const copied=copySync(prompt);
+  const q=encodeURIComponent(prompt.slice(0,13000));
+  if(claudeTarget()==='app')location.href='claude://claude.ai/new?q='+q;
+  else window.open('https://claude.ai/new?q='+q,'_blank','noopener');
+  return copied;
+}
+function handoffNote(copied,prompt,nextId){
+  return `<div class="fbk"><h4>\u{1F4AC} In Claude geöffnet</h4><p>Deine Aufgabe, dein Text und das Bewertungsschema stehen schon im Eingabefeld – nur noch <b>senden</b>. ${copied?'Falls das Feld leer ist: einfach einfügen (⌘V bzw. lange tippen → Einsetzen), der Text ist kopiert.':''}</p>
+  <div class="dsbtns" style="margin-top:12px;margin-bottom:0"><button class="btn-g" data-ho="open">↗ Nochmal öffnen</button><button class="btn-g" data-ho="copy">\u{1F4CB} Text kopieren</button>${nextId?`<button class="wr-check" id="${nextId}">Nächste Aufgabe →</button>`:''}</div></div>`;
+}
+function wireHandoff(box,prompt){
+  box.querySelectorAll('[data-ho]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.ho==='open')openClaude(prompt);
+    else{const ok=copySync(prompt);b.textContent=ok?'✅ Kopiert':'Kopieren ging nicht';}
+  });
+}
+function dsPrompt(t,txt){
+  const isT=t.c==='taboo';
+  const task=isT
+    ?`Übung „Umschreiben“: Ich soll das englische Wort „${t.word}“ auf Englisch erklären, OHNE es selbst zu benutzen, so dass jemand es erraten kann.`
+    :`Übung „Beschreiben“ (Dinge in eigenen Worten erklären, ohne nachzuschlagen).\nThema: ${t.de}${t.en?' (Englisch: '+t.en+')':''}\nAufgabe: ${t.task}${t.h&&t.h.length?'\nMögliche Hilfswörter: '+t.h.join(', '):''}`;
+  return `${LEARNER}
+
+${task}
+
+Mein Text:
+"""
+${txt}
+"""
+
+Bitte bewerte das so:
+1. **Gesamtnote 1–10** und je ein kurzer Satz zu Grammatik, Wortschatz, Natürlichkeit und Verständlichkeit.${isT?'\n   Sag auch, welches Wort ein Zuhörer wohl erraten würde und ob meine Erklärung funktioniert.':''}
+2. **Fehler** als Tabelle: Mein Text | Richtig | Warum (kurz auf Deutsch). Nur echte Fehler und typisch deutsch klingende Formulierungen – erfinde keine.
+3. **So sagt es ein Muttersprachler:** mein Text als natürliches, flüssiges Englisch (gleicher Inhalt, ähnliche Länge).
+4. **3–5 nützliche Wörter oder Wendungen** zum Thema, die ich nicht benutzt habe, mit deutscher Bedeutung.
+5. **Ein konkreter Tipp** fürs Sprechen.
+
+Erklärungen auf Deutsch, Beispiele auf Englisch. Sei ermutigend, aber ehrlich.
+Stell mir zum Schluss eine kurze Anschlussfrage auf Englisch zum Thema, damit ich direkt weiterüben kann – und korrigiere meine Antwort darauf wieder genauso.`;
+}
+function grPrompt(l,txt){
+  const rules=l.b.filter(x=>x.tip||x.p||x.bad).map(x=>x.bad?'Falsch: '+grStrip(x.bad)+' → Richtig: '+grStrip(x.good):grStrip(x.tip||x.p)).join('\n- ');
+  return `${LEARNER}
+
+Ich übe gerade die Grammatik-Lektion „${l.t}“ (${l.sub}). Die wichtigsten Regeln daraus:
+- ${rules}
+
+Ich habe dazu einen eigenen Satz gebildet:
+"""
+${txt}
+"""
+
+Bitte:
+1. Sag mir klar: **richtig oder falsch?** Wenn falsch, die korrigierte Version und warum (kurz auf Deutsch, mit Bezug auf die Regel).
+2. Zeig mir, wie ein Muttersprachler das **natürlich** sagen würde – falls das anders ist.
+3. Gib mir **3 neue Übungssätze** auf Deutsch zu genau dieser Regel, die ich übersetzen soll. Warte auf meine Antworten und korrigiere sie dann.`;
+}
+
 // ── EINSTELLUNGEN: Web-App (API-Key, Sync) + Fortschritt übertragen ──
 function renderSettings(){
   const el=g('set-box');if(!el)return;
@@ -2500,8 +2545,9 @@ function renderSettings(){
     const hasKey=!!lsGet(K.KK),hasTok=!!lsGet(K.GT);
     h+=`
     <div class="st-sec">
-      <div class="st-h">\u{1F916} Feedback <span class="st-ok">${hasKey?'Claude-API aktiv':'kostenlos aktiv'}</span></div>
-      <div class="vb-hint" style="margin:4px 0 8px">${hasKey?'Feedback kommt \u00fcber deinen eigenen API-Key.':'Beim Beschreiben und im Grammatik-Satzcheck pr\u00fcft ein kostenloser Grammatik-Check (LanguageTool) deinen Text. F\u00fcr ausf\u00fchrliches Feedback \u00f6ffnet ein Knopf Claude mit deinem Text \u2013 \u00fcber dein normales Claude-Abo, ohne Zusatzkosten.'}</div>
+      <div class="st-h">\u{1F916} Feedback <span class="st-ok">${hasKey?'Claude-API aktiv':'\u00fcber Claude'}</span></div>
+      <div class="vb-hint" style="margin:4px 0 8px">${hasKey?'Feedback kommt direkt in der App \u00fcber deinen API-Key.':'\u201eFeedback in Claude holen\u201c \u00f6ffnet einen neuen Claude-Chat mit deiner Aufgabe, deinem Text und einem festen Bewertungsschema \u2013 \u00fcber dein Claude-Abo, ohne Zusatzkosten.'}</div>
+      ${hasKey?'':`<div class="vb-row" style="margin-bottom:8px"><select class="sel" id="st-claude"><option value="app"${claudeTarget()==='app'?' selected':''}>In der Claude-App \u00f6ffnen</option><option value="web"${claudeTarget()==='web'?' selected':''}>Im Browser (claude.ai) \u00f6ffnen</option></select></div>`}
       <details class="st-adv"${hasKey?' open':''}><summary>Optional: eigener Anthropic-API-Key (kostenpflichtig)</summary>
       <div class="vb-hint" style="margin:6px 0 8px">Dann kommt das ausf\u00fchrliche Feedback direkt in der App. Key unter <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, wird nur auf diesem Ger\u00e4t gespeichert.</div>
       <div class="vb-row"><input class="brsearch" type="password" id="st-key" placeholder="${hasKey?'\u2022\u2022\u2022\u2022\u2022\u2022 gespeichert \u2013 neuen Key einf\u00fcgen zum \u00c4ndern':'sk-ant-\u2026'}" autocomplete="off"><button class="btn-g" id="st-key-save">Speichern</button>${hasKey?'<button class="btn-g" id="st-key-test">Testen</button><button class="btn-g" id="st-key-del">Entfernen</button>':''}</div>
@@ -2527,6 +2573,7 @@ function renderSettings(){
     const K=window.ET_web.keys;
     const msg=(id,t,ok)=>{const m=g(id);m.textContent=t;m.style.color=ok?'var(--gn)':'var(--rd)'};
     g('st-key-save').onclick=()=>{const v=g('st-key').value.trim();if(!/^sk-ant-/.test(v)){msg('st-key-msg','Das sieht nicht wie ein Anthropic-Key aus (beginnt mit sk-ant-).');return}lsSet(K.KK,v);msg('st-key-msg','Gespeichert – die Seite lädt neu …',true);setTimeout(()=>location.reload(),600)};
+    if(g('st-claude'))g('st-claude').onchange=e=>lsSet(CLM,e.target.value);
     if(g('st-key-test'))g('st-key-test').onclick=async()=>{msg('st-key-msg','Teste …',true);try{const r=await window.ET_web.ask('Reply with exactly: OK',{modelTier:'quick',maxTokens:10});msg('st-key-msg','✅ Funktioniert ('+String(r.text).trim().slice(0,20)+')',true)}catch(e){msg('st-key-msg','❌ '+(e.message||'Fehler'))}};
     if(g('st-key-del'))g('st-key-del').onclick=()=>{lsSet(K.KK,null);location.reload()};
     g('st-tok-save').onclick=async()=>{
