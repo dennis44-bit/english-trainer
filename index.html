@@ -223,6 +223,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
 .st-ta{min-height:90px;font-size:12px;font-family:ui-monospace,Menlo,monospace;margin-top:8px}
 .vbox a{color:var(--ac)}
 .vb-row .brsearch{min-width:180px}
+.st-adv{margin-top:6px}.st-adv summary{font-size:12px;color:var(--t2);cursor:pointer}
 /* ── Grammatik ── */
 .gr-list{display:flex;flex-direction:column;gap:8px}
 .gr-item{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:13px 16px;font-family:inherit;color:var(--t1);cursor:pointer;transition:all .18s}
@@ -441,6 +442,41 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
     limits:async()=>({images:false})
   });
 
+
+  // Kostenloser Modus ohne API-Key: Grammatik-Check ueber LanguageTool + Link, der Claude mit dem Text vorbefuellt oeffnet
+  async function ltCheck(text){
+    let r;
+    try{r=await fetch('https://api.languagetool.org/v2/check',{method:'POST',body:new URLSearchParams({text,language:'en-GB',motherTongue:'de-DE'})})}
+    catch(e){throw err('network','Keine Verbindung zum Grammatik-Check')}
+    if(r.status===429)throw err('rate_limited','Zu viele Anfragen');
+    if(!r.ok)throw err('lt_'+r.status,'Grammatik-Check nicht erreichbar ('+r.status+')');
+    return r.json();
+  }
+  const freeSample=Object.assign(async()=>{throw err('not_supported','Nur Textprüfung')},{free:true,
+    json:async input=>{
+      const p=typeof input==='string'?input:(input||[]).map(x=>x.content).join('\n');
+      const mm=p.match(/"""([\s\S]*?)"""/);
+      if(!mm)throw err('not_supported','Nur Textprüfung möglich');
+      const text=mm[1].trim();
+      const res=await ltCheck(text);
+      const ms=(res.matches||[]).slice(0,8);
+      let corrected=text;
+      [...ms].sort((a,b)=>b.offset-a.offset).forEach(x=>{const rep=(x.replacements||[])[0];if(rep)corrected=corrected.slice(0,x.offset)+rep.value+corrected.slice(x.offset+x.length)});
+      const corrections=ms.map(x=>({wrong:text.substr(x.offset,x.length),right:((x.replacements||[])[0]||{}).value||'(umformulieren)',why:x.message||''}));
+      const ex=p.match(/Exercise: (.*)/),gl=p.match(/Grammar lesson: (.*)/);
+      const task=ex?'Meine Übung: '+ex[1]:gl?'Ich übe gerade diese Grammatik-Regel: '+gl[1]:'';
+      const cp=`Ich bin Deutscher und lerne Englisch (etwa B2), vor allem fürs Sprechen im Job. ${task}\n\nMein Text:\n"${text}"\n\nBitte korrigiere meine Fehler, erkläre sie kurz auf Deutsch und zeig mir, wie ein Muttersprachler das natürlich sagen würde. Nenn mir außerdem 3 nützliche Wörter oder Wendungen zum Thema.`;
+      const n=corrections.length;
+      return {
+        summary:n?n+(n===1?' möglicher Fehler':' mögliche Fehler')+' gefunden (automatischer Grammatik-Check).':'Keine Grammatik- oder Rechtschreibfehler gefunden. Satzstellung und natürliche Formulierung prüft der Gratis-Check nur teilweise – im Zweifel ausführliches Feedback in Claude holen.',
+        corrections,better:corrected!==text?corrected:'',words:[],
+        tip:'Der Gratis-Check findet Grammatik und Rechtschreibung. Ob es natürlich klingt und welche Wörter besser passen, sagt dir das ausführliche Feedback in Claude.',
+        correct:n===0,corrected,
+        explanation:n?corrections.map(c=>'„'+c.wrong+'“ → „'+c.right+'“: '+c.why).join(' · '):'Der automatische Check hat keine Fehler gefunden. Satzstellung (z.\u00a0B. wo die Zeit steht) erkennt er aber nicht immer – im Zweifel ausführliches Feedback in Claude holen.',
+        alternative:'',_claude:'https://claude.ai/new?q='+encodeURIComponent(cp)
+      };
+    }});
+
   async function gh(path,method,body){
     const r=await fetch('https://api.github.com'+path,{method:method||'GET',cache:'no-store',headers:Object.assign({
       'Authorization':'Bearer '+ls(GT),'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},body?{'Content-Type':'application/json'}:{}),
@@ -474,7 +510,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
 
   window.ET_web={ask,gh,findGist,keys:{KK,GT,GI}};
   window.claude={use:async name=>{
-    if(name==='sample')return ls(KK)?sample:null;
+    if(name==='sample')return ls(KK)?sample:freeSample;
     if(name==='db')return ls(GT)?db:null;
     if(name==='user')return ls(GT)?{id:async()=>'me'}:null;
     return null;
@@ -1484,7 +1520,7 @@ const saveDS=()=>{try{localStorage.setItem(DK,JSON.stringify(DSM))}catch(e){};sc
 let dsCur=null,dsSample=null,dsBusy=false,dsCtl=null,dsLastIdx=-1;
 const s_=v=>esc(String(v==null?'':v));
 
-(async()=>{try{if(window.claude&&claude.use){dsSample=await claude.use('sample');if(dsSample){g('ds-ai').style.display='';if(typeof grOwnRefresh==='function')grOwnRefresh();}}}catch(e){dsSample=null}})();
+(async()=>{try{if(window.claude&&claude.use){dsSample=await claude.use('sample');if(dsSample){g('ds-ai').style.display=dsSample.free?'none':'';if(typeof grOwnRefresh==='function')grOwnRefresh();}}}catch(e){dsSample=null}})();
 
 g('ds-new').onclick=()=>newDS();
 g('ds-cat').onchange=()=>newDS();
@@ -1608,10 +1644,10 @@ function feedbackHTML(r,isT){
   <div class="fbk"><h4>Gesamteindruck ${sc?`<span class="score">${sc}/10</span>`:''}</h4><p>${s_(r.summary)}</p></div>
   ${isT&&r.guess?`<div class="fbk"><h4>W\u00fcrde man es erraten?</h4><p>${s_(r.guess)}</p></div>`:''}
   <div class="fbk"><h4>Korrekturen</h4>${corr.length?corr.map(c=>`<div class="corr"><span class="w">${s_(c.wrong)}</span> \u2192 <span class="r">${s_(c.right)}</span><span class="y">${s_(c.why)}</span></div>`).join(''):'<p>Keine echten Fehler gefunden \u2013 stark! \u{1F44F}</p>'}</div>
-  ${r.better?`<div class="fbk"><h4>So klingt es nat\u00fcrlich</h4><p>${s_(r.better)}</p><button class="spk" id="ds-spk-better" style="margin-top:10px">\u{1F50A} Anh\u00f6ren</button></div>`:''}
+  ${r.better?`<div class="fbk"><h4>${r._claude?'Korrigierte Version':'So klingt es nat\u00fcrlich'}</h4><p>${s_(r.better)}</p><button class="spk" id="ds-spk-better" style="margin-top:10px">\u{1F50A} Anh\u00f6ren</button></div>`:''}
   ${words.length?`<div class="fbk"><h4>N\u00fctzliche W\u00f6rter f\u00fcrs n\u00e4chste Mal</h4>${words.map(w=>`<div class="nw"><b>${s_(w.en)}</b> <span>\u2013 ${s_(w.de)}</span></div>`).join('')}</div>`:''}
   ${r.tip?`<div class="fbk"><h4>Tipp</h4><p>${s_(r.tip)}</p></div>`:''}
-  <div class="dsbtns" style="justify-content:center"><button class="btn-g" id="ds-again">\u270D\uFE0F Nochmal verbessern</button><button class="wr-check" id="ds-next">N\u00e4chste Aufgabe \u2192</button></div>`;
+  <div class="dsbtns" style="justify-content:center">${r._claude?`<a class="btn-g" href="${r._claude}" target="_blank" rel="noopener" style="text-decoration:none">\u{1F4AC} Ausf\u00fchrliches Feedback in Claude</a>`:''}<button class="btn-g" id="ds-again">\u270D\uFE0F Nochmal verbessern</button><button class="wr-check" id="ds-next">N\u00e4chste Aufgabe \u2192</button></div>`;
 }
 function selfCheckHTML(t){
   const hints=(t.h||[]).length?`<div class="chips">${t.h.map(x=>`<span class="chip">${s_(x)}</span>`).join('')}</div>`:'';
@@ -2157,7 +2193,7 @@ Reply with ONLY a JSON object, no markdown:
   try{
     const r=await dsSample.json(prompt,{modelTier:'default',cache:false})||{};
     bumpDay(!!r.correct);
-    fb.innerHTML=`<div class="fbk"><h4>${r.correct?'✅ Passt!':'✏️ So ist es richtig'}</h4><p>${s_(r.corrected)} ${r.corrected?grSay(r.corrected):''}</p></div><div class="fbk"><h4>Erklärung</h4><p>${s_(r.explanation)}</p></div>${r.alternative?`<div class="fbk"><h4>So könnte man es auch sagen</h4><p>${s_(r.alternative)} ${grSay(r.alternative)}</p></div>`:''}${r.tip?`<div class="fbk"><h4>Tipp</h4><p>${s_(r.tip)}</p></div>`:''}`;
+    fb.innerHTML=`<div class="fbk"><h4>${r.correct?(r._claude?'✅ Kein Fehler gefunden':'✅ Passt!'):'✏️ So ist es richtig'}</h4><p>${s_(r.corrected)} ${r.corrected?grSay(r.corrected):''}</p></div><div class="fbk"><h4>Erklärung</h4><p>${s_(r.explanation)}</p></div>${r.alternative?`<div class="fbk"><h4>So könnte man es auch sagen</h4><p>${s_(r.alternative)} ${grSay(r.alternative)}</p></div>`:''}${r.tip?`<div class="fbk"><h4>Tipp</h4><p>${s_(r.tip)}</p></div>`:''}${r._claude?`<div class="dsbtns"><a class="btn-g" href="${r._claude}" target="_blank" rel="noopener" style="text-decoration:none">\u{1F4AC} Ausf\u00fchrliches Feedback in Claude</a></div>`:''}`;
   }catch(e){
     const c=e&&e.code;
     if(c==='not_granted'){dsSample=null;g('ds-ai').style.display='none';fb.innerHTML='<div class="dsnote">KI-Feedback wurde nicht erlaubt.</div>'}
@@ -2464,10 +2500,13 @@ function renderSettings(){
     const hasKey=!!lsGet(K.KK),hasTok=!!lsGet(K.GT);
     h+=`
     <div class="st-sec">
-      <div class="st-h">\u{1F916} KI-Feedback ${hasKey?'<span class="st-ok">aktiv</span>':'<span class="st-off">aus</span>'}</div>
-      <div class="vb-hint" style="margin:4px 0 8px">Für das Feedback beim Beschreiben und den Satz-Check in der Grammatik. Den Key bekommst du unter <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Er wird nur auf diesem Gerät gespeichert. Ein Feedback kostet nur wenige Cent.</div>
-      <div class="vb-row"><input class="brsearch" type="password" id="st-key" placeholder="${hasKey?'•••••• gespeichert – neuen Key einfügen zum Ändern':'sk-ant-…'}" autocomplete="off"><button class="btn-g" id="st-key-save">Speichern</button>${hasKey?'<button class="btn-g" id="st-key-test">Testen</button><button class="btn-g" id="st-key-del">Entfernen</button>':''}</div>
+      <div class="st-h">\u{1F916} Feedback <span class="st-ok">${hasKey?'Claude-API aktiv':'kostenlos aktiv'}</span></div>
+      <div class="vb-hint" style="margin:4px 0 8px">${hasKey?'Feedback kommt \u00fcber deinen eigenen API-Key.':'Beim Beschreiben und im Grammatik-Satzcheck pr\u00fcft ein kostenloser Grammatik-Check (LanguageTool) deinen Text. F\u00fcr ausf\u00fchrliches Feedback \u00f6ffnet ein Knopf Claude mit deinem Text \u2013 \u00fcber dein normales Claude-Abo, ohne Zusatzkosten.'}</div>
+      <details class="st-adv"${hasKey?' open':''}><summary>Optional: eigener Anthropic-API-Key (kostenpflichtig)</summary>
+      <div class="vb-hint" style="margin:6px 0 8px">Dann kommt das ausf\u00fchrliche Feedback direkt in der App. Key unter <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, wird nur auf diesem Ger\u00e4t gespeichert.</div>
+      <div class="vb-row"><input class="brsearch" type="password" id="st-key" placeholder="${hasKey?'\u2022\u2022\u2022\u2022\u2022\u2022 gespeichert \u2013 neuen Key einf\u00fcgen zum \u00c4ndern':'sk-ant-\u2026'}" autocomplete="off"><button class="btn-g" id="st-key-save">Speichern</button>${hasKey?'<button class="btn-g" id="st-key-test">Testen</button><button class="btn-g" id="st-key-del">Entfernen</button>':''}</div>
       <div class="st-msg" id="st-key-msg"></div>
+      </details>
     </div>
     <div class="st-sec">
       <div class="st-h">☁️ Sync zwischen Handy & PC ${hasTok?'<span class="st-ok">aktiv</span>':'<span class="st-off">aus</span>'}</div>

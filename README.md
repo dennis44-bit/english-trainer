@@ -8,8 +8,8 @@ Persönlicher Englisch-Trainer als Web-App: Vokabel-Kartei mit Schreiben und Lü
 
 Auf der Übersicht unter **⚙️ Einstellungen**:
 
-- **KI-Feedback:** einen Anthropic-API-Key eintragen (console.anthropic.com → API Keys). Der Key bleibt nur im Browser des Geräts gespeichert und steht nicht im Code.
-- **Sync zwischen Geräten:** einen GitHub-Token mit dem Recht `gist` eintragen. Der Lernstand liegt dann in einem privaten Gist und ist auf allen Geräten gleich.
+- **Feedback (kostenlos):** Beim Beschreiben und im Grammatik-Satzcheck prüft LanguageTool Grammatik und Rechtschreibung. Ein Knopf öffnet Claude mit dem Text vorausgefüllt für ausführliches Feedback (über das normale Claude-Abo). Optional geht auch ein eigener Anthropic-API-Key.
+- **Sync zwischen Geräten (kostenlos):** einen GitHub-Token mit dem Recht `gist` eintragen. Der Lernstand liegt dann in einem privaten Gist und ist auf allen Geräten gleich.
 - **Fortschritt übertragen:** Export/Import, z. B. um den Lernstand aus der Claude-Artefakt-Version zu übernehmen.
 
 Auf dem Handy über „Zum Home-Bildschirm“ als App installierbar.
