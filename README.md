@@ -19,3 +19,11 @@ Alles steckt in `index.html` (eine Datei, kein Build-Schritt). Dieselbe Datei l�
 ## Neue Version veröffentlichen
 
 `python3 tools/release.py "Was ist neu"` setzt den Versionsstempel in `index.html` und schreibt `version.json`. Die App prüft `version.json` beim Öffnen und alle 10 Minuten und zeigt bei einer neueren Version oben den Knopf „Jetzt aktualisieren“.
+
+## Vorlesen mit Mac-Stimme (Aufnahmen)
+
+Safari gibt erweiterte Mac-Stimmen nicht an Webseiten weiter. Deshalb nimmt `tools/make_audio.sh` alle Texte aus `audio/texts.tsv` auf dem Mac mit `say` auf (Standard: Evan). Die Dateien liegen als `audio/<fnv1a-hash>.m4a` im Repo, `audio/index.json` listet sie. Der Trainer spielt eine Aufnahme ab, wenn es eine gibt, sonst nutzt er die Browser-Stimme.
+
+```
+curl -fsSL https://raw.githubusercontent.com/dennis44-bit/english-trainer/main/tools/make_audio.sh | bash
+```

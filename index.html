@@ -1154,7 +1154,7 @@ const freshWords=pool=>pool.filter(w=>!P[wid(w)]);
 function dailyDeck(pool){const allow=Math.max(0,newPerDay()-newToday());return dueReviews(pool).concat(freshWords(pool).slice(0,allow));}
 
 // ── SPEAK ──
-const speak=(t,l)=>{if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=l||'en-GB';try{const v=pickVoice(u.lang);if(v==='SYS'){const dv=allVoices().find(x=>x.default&&/^en/i.test(x.lang||''));if(dv){u.voice=dv;u.lang=dv.lang}else u.lang='en-US'}else if(v){u.voice=v;u.lang=v.lang}}catch(e){}u.rate=vRate();speechSynthesis.speak(u)};
+const speak=(t,l)=>{try{if(audCur){audCur.pause();audCur=null}}catch(e){}if(/^en/i.test(l||'en-GB')&&useRec()&&playRec(t))return;if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=l||'en-GB';try{const v=pickVoice(u.lang);if(v==='SYS'){const dv=allVoices().find(x=>x.default&&/^en/i.test(x.lang||''));if(dv){u.voice=dv;u.lang=dv.lang}else u.lang='en-US'}else if(v){u.voice=v;u.lang=v.lang}}catch(e){}u.rate=vRate();speechSynthesis.speak(u)};
 let fcDeck=[],fcIdx=0,fcFlipped=false,fcTot=0,fcDone=0;
 let brItems=[];
 const spkFront=()=>{if(fcDeck[fcView]){const d=g('fc-dir').value;speak(d==='en'?fcDeck[fcView].en:fcDeck[fcView].de,d==='en'?'en-GB':'de-DE')}};
@@ -2319,12 +2319,13 @@ function renderVoiceBox(){
   if(!window.speechSynthesis){el.innerHTML='<div class="dstask">Vorlesen wird in diesem Browser nicht unterstützt.</div>';return}
   const list=voicesFor('en-GB');
   const cur=pickVoice('en-GB');
+  const recOn=useRec();
   const ua=navigator.userAgent||'';const br=/Edg\//.test(ua)?'Edge':/Chrome\//.test(ua)?'Chrome':/Firefox\//.test(ua)?'Firefox':/Safari\//.test(ua)?'Safari':'diesem Browser';
   const diag=`<div class="vb-hint" style="margin-top:6px">${list.length} englische Stimmen in ${br} gefunden. Neu installierte Stimmen erscheinen erst, nachdem der Browser komplett beendet (\u2318Q) und neu ge\u00f6ffnet wurde.</div>`;
   const r=vRate();
   el.innerHTML=`
     <div class="vb-row">
-      <select class="sel" id="vb-voice"><option value="__system__"${cur==='SYS'?' selected':''}>\u{1F5A5}\uFE0F Systemstimme vom Mac/Ger\u00e4t (z.\u00a0B. Evan)</option>${list.length?list.map((v,i)=>`<option value="${esc(v.name)}"${cur&&cur!=='SYS'&&v.name===cur.name?' selected':''}>${esc(v.name)} (${esc(v.lang)})${i===0?' – empfohlen':''}</option>`).join(''):'<option>Stimmen werden geladen …</option>'}</select>
+      <select class="sel" id="vb-voice">${AUD?`<option value="__rec__"${recOn?' selected':''}>\u{1F399}\uFE0F ${esc(audVoice||'Mac-Stimme')} (Aufnahmen vom Mac) \u2013 empfohlen</option>`:''}<option value="__system__"${!recOn&&cur==='SYS'?' selected':''}>\u{1F5A5}\uFE0F Systemstimme vom Mac/Ger\u00e4t (z.\u00a0B. Evan)</option>${list.length?list.map((v,i)=>`<option value="${esc(v.name)}"${!recOn&&cur&&cur!=='SYS'&&v.name===cur.name?' selected':''}>${esc(v.name)} (${esc(v.lang)})${i===0&&!AUD?' – empfohlen':''}</option>`).join(''):'<option>Stimmen werden geladen …</option>'}</select>
       <select class="sel" id="vb-rate">${[[.8,'Langsam'],[.95,'Normal'],[1.05,'Schnell']].map(([v,t])=>`<option value="${v}"${Math.abs(v-r)<.01?' selected':''}>${t}</option>`).join('')}</select>
       <button class="btn-g" id="vb-test">▶ Testen</button>
     </div>
@@ -2335,6 +2336,24 @@ function renderVoiceBox(){
   g('vb-test').onclick=()=>speak("Hi! Let's practise some English together. How was your weekend?",'en-GB');
 }
 try{if(window.speechSynthesis){speechSynthesis.addEventListener?speechSynthesis.addEventListener('voiceschanged',renderVoiceBox):(speechSynthesis.onvoiceschanged=renderVoiceBox)}}catch(e){}
+
+// ── AUFNAHMEN: Texte, die auf dem Mac mit einer Systemstimme (z. B. Evan) aufgenommen wurden ──
+// tools/make_audio.sh erzeugt audio/<fnv1a-hash>.m4a; audio/index.json listet die vorhandenen Dateien.
+let AUD=null,audCur=null,audVoice='';
+function fnv1a(s){const b=window.TextEncoder?new TextEncoder().encode(s):Array.from(unescape(encodeURIComponent(s)),c=>c.charCodeAt(0));let h=0x811c9dc5;for(const c of b){h^=c;h=Math.imul(h,0x01000193)>>>0}return h.toString(16).padStart(8,'0')}
+const audKey=t=>String(t||'').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+function useRec(){if(!AUD)return false;const v=lsGet(VK);return !v||v==='__rec__'}
+function playRec(t){
+  if(!AUD)return false;const h=fnv1a(audKey(t));if(!AUD.has(h))return false;
+  try{if(window.speechSynthesis)speechSynthesis.cancel();const a=new Audio('audio/'+h+'.m4a');a.playbackRate=Math.max(.5,Math.min(2,vRate()/.95));audCur=a;
+    const p=a.play();if(p&&p.catch)p.catch(()=>{AUD.delete(h);speak(t,'en-GB')});return true}catch(e){return false}
+}
+async function loadAud(){
+  if(!window.ET_STANDALONE)return;
+  try{const r=await fetch('audio/index.json?t='+encodeURIComponent(APP_VERSION),{cache:'no-cache'});if(!r.ok)return;const j=await r.json();
+    if(Array.isArray(j.files)&&j.files.length){AUD=new Set(j.files);audVoice=j.voice||'';renderVoiceBox()}}catch(e){}
+}
+
 
 // Diktieren im Beschreiben-Feld (Web Speech API; geht in Chrome, Edge, Safari)
 const SRec=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -2720,8 +2739,8 @@ function renderSettings(){
 
 // ── VERSION & UPDATES ──
 // APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
-const APP_VERSION='2026-11-28T10:38:46Z';
-const APP_NOTES="Neue Stimmen-Option: Systemstimme vom Mac (z. B. Evan).";
+const APP_VERSION='2026-11-28T10:50:04Z';
+const APP_NOTES="Vorbereitung für Aufnahmen mit deiner Mac-Stimme (Evan).";
 let updInfo=null,updTimer=null;
 function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
 function renderVer(msg){
@@ -2756,6 +2775,7 @@ function applyUpdate(){
   location.replace(location.pathname+'?v='+encodeURIComponent(v));
 }
 renderVer();
+loadAud();
 if(window.ET_STANDALONE){
   setTimeout(()=>checkUpdate(false),1500);
   updTimer=setInterval(()=>checkUpdate(false),10*60*1000);
