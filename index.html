@@ -1154,7 +1154,7 @@ const freshWords=pool=>pool.filter(w=>!P[wid(w)]);
 function dailyDeck(pool){const allow=Math.max(0,newPerDay()-newToday());return dueReviews(pool).concat(freshWords(pool).slice(0,allow));}
 
 // ── SPEAK ──
-const speak=(t,l)=>{if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=l||'en-GB';try{const v=pickVoice(u.lang);if(v){u.voice=v;u.lang=v.lang}}catch(e){}u.rate=vRate();speechSynthesis.speak(u)};
+const speak=(t,l)=>{if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=l||'en-GB';try{const v=pickVoice(u.lang);if(v==='SYS'){const dv=allVoices().find(x=>x.default&&/^en/i.test(x.lang||''));if(dv){u.voice=dv;u.lang=dv.lang}else u.lang='en-US'}else if(v){u.voice=v;u.lang=v.lang}}catch(e){}u.rate=vRate();speechSynthesis.speak(u)};
 let fcDeck=[],fcIdx=0,fcFlipped=false,fcTot=0,fcDone=0;
 let brItems=[];
 const spkFront=()=>{if(fcDeck[fcView]){const d=g('fc-dir').value;speak(d==='en'?fcDeck[fcView].en:fcDeck[fcView].de,d==='en'?'en-GB':'de-DE')}};
@@ -2306,8 +2306,10 @@ function voicesFor(lang){
     .sort((a,b)=>voiceScore(b,lang)-voiceScore(a,lang));
 }
 function pickVoice(lang){
-  const list=voicesFor(lang);if(!list.length)return null;
-  if(lang.startsWith('en')){const want=lsGet(VK);if(want){const v=list.find(x=>x.name===want);if(v)return v}}
+  const list=voicesFor(lang);
+  if(lang.startsWith('en')&&lsGet(VK)==='__system__')return 'SYS';
+  if(!list.length)return null;
+  if(lang.startsWith('en')){const want=lsGet(VK);if(want==='__system__')return 'SYS';if(want){const v=list.find(x=>x.name===want);if(v)return v}}
   return list[0];
 }
 const vRate=()=>{const r=+lsGet(VRK);return r>0?r:.95};
@@ -2322,15 +2324,13 @@ function renderVoiceBox(){
   const r=vRate();
   el.innerHTML=`
     <div class="vb-row">
-      <select class="sel" id="vb-voice">${list.length?list.map((v,i)=>`<option value="${esc(v.name)}"${cur&&v.name===cur.name?' selected':''}>${esc(v.name)} (${esc(v.lang)})${i===0?' – empfohlen':''}</option>`).join(''):'<option>Stimmen werden geladen …</option>'}</select>
+      <select class="sel" id="vb-voice"><option value="__system__"${cur==='SYS'?' selected':''}>\u{1F5A5}\uFE0F Systemstimme vom Mac/Ger\u00e4t (z.\u00a0B. Evan)</option>${list.length?list.map((v,i)=>`<option value="${esc(v.name)}"${cur&&cur!=='SYS'&&v.name===cur.name?' selected':''}>${esc(v.name)} (${esc(v.lang)})${i===0?' – empfohlen':''}</option>`).join(''):'<option>Stimmen werden geladen …</option>'}</select>
       <select class="sel" id="vb-rate">${[[.8,'Langsam'],[.95,'Normal'],[1.05,'Schnell']].map(([v,t])=>`<option value="${v}"${Math.abs(v-r)<.01?' selected':''}>${t}</option>`).join('')}</select>
       <button class="btn-g" id="vb-test">▶ Testen</button>
     </div>
     ${diag}
     <div class="vb-hint">Die Stimmen kommen von deinem Gerät. Die natürlichsten bekommst du im <b>Edge-Browser</b> („Online (Natural)“) oder am Mac, wenn du unter <i>Systemeinstellungen → Bedienungshilfen → Gesprochene Inhalte → Systemstimme → Stimmen verwalten</i> eine englische „Premium“- oder „Erweitert“-Stimme lädst (z. B. Daniel oder Oliver). Danach den Trainer neu laden.</div>`;
-  if(list.length){
-    g('vb-voice').onchange=e=>{lsSet(VK,e.target.value);speak('Hi, this is how I sound.','en-GB')};
-  }
+  g('vb-voice').onchange=e=>{if(e.target.value){lsSet(VK,e.target.value);speak('Hi, this is how I sound.','en-GB')}};
   g('vb-rate').onchange=e=>{lsSet(VRK,e.target.value);speak("Let's practise some English.",'en-GB')};
   g('vb-test').onclick=()=>speak("Hi! Let's practise some English together. How was your weekend?",'en-GB');
 }
@@ -2720,8 +2720,8 @@ function renderSettings(){
 
 // ── VERSION & UPDATES ──
 // APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
-const APP_VERSION='2026-11-28T10:37:14Z';
-const APP_NOTES="Stimmen-Auswahl zeigt jetzt, wie viele englische Stimmen der Browser gefunden hat.";
+const APP_VERSION='2026-11-28T10:38:46Z';
+const APP_NOTES="Neue Stimmen-Option: Systemstimme vom Mac (z. B. Evan).";
 let updInfo=null,updTimer=null;
 function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
 function renderVer(msg){
