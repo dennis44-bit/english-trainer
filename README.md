@@ -17,3 +17,7 @@ Auf dem Handy über „Zum Home-Bildschirm“ als App installierbar.
 ## Aufbau
 
 Alles steckt in `index.html` (eine Datei, kein Build-Schritt). Dieselbe Datei läuft auch als Claude-Artefakt; dort kommen KI und Sync von Claude, auf GitHub Pages von API-Key und Gist.
+
+## Neue Version veröffentlichen
+
+`python3 tools/release.py "Was ist neu"` setzt den Versionsstempel in `index.html` und schreibt `version.json`. Die App prüft `version.json` beim Öffnen und alle 10 Minuten und zeigt bei einer neueren Version oben den Knopf „Jetzt aktualisieren“.

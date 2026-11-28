@@ -225,6 +225,17 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
 .vb-row .brsearch{min-width:180px}
 .st-adv{margin-top:6px}.st-adv summary{font-size:12px;color:var(--t2);cursor:pointer}
 .wr-also{font-size:13px;font-weight:400;margin-top:6px;opacity:.9}
+/* ── Version & Updates ── */
+.updbar{position:sticky;top:calc(56px + env(safe-area-inset-top,0px));z-index:98;background:var(--acd);border-bottom:1px solid var(--acg);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.updin{max-width:960px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:var(--t1);flex-wrap:wrap}
+.updin .wr-check{padding:8px 16px;font-size:13px}
+.verbox{margin-top:14px;font-size:12px;color:var(--t2)}
+.ver-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
+.ver-row b{color:var(--t1)}
+.ver-row .btn-g{padding:5px 10px;font-size:12px}
+.ver-new{margin-top:10px;text-align:center;color:var(--ac);font-weight:600}
+.ver-new .wr-check{padding:6px 14px;font-size:12px;margin-left:8px}
+.ver-notes{margin-top:8px;text-align:center;line-height:1.5}
 /* ── Grammatik ── */
 .gr-list{display:flex;flex-direction:column;gap:8px}
 .gr-item{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:13px 16px;font-family:inherit;color:var(--t1);cursor:pointer;transition:all .18s}
@@ -310,6 +321,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
     </nav>
   </div>
 </header>
+<div id="upd-bar" class="updbar" style="display:none"></div>
 <main>
 <div id="tab-dash" class="tab on">
   <div class="hero" id="d-hero"></div>
@@ -327,6 +339,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   <div class="lbl" style="margin-top:24px">&#9881;&#65039; Einstellungen</div>
   <div class="vbox" id="set-box"></div>
   <div class="syncst" id="sync-st"></div>
+  <div class="verbox" id="ver-box"></div>
 </div>
 <div id="tab-fc" class="tab">
   <div class="subtoggle fcs" id="fc-sub">
@@ -2736,6 +2749,50 @@ function renderSettings(){
       renderDash();
     };
   };
+}
+
+// ── VERSION & UPDATES ──
+// APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
+const APP_VERSION='2026-11-28T10:28:22Z';
+const APP_NOTES="Update-Anzeige: die App zeigt, wann sie zuletzt aktualisiert wurde, und meldet neue Versionen selbst.";
+let updInfo=null,updTimer=null;
+function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
+function renderVer(msg){
+  const el=g('ver-box');if(!el)return;
+  el.innerHTML=`<div class="ver-row"><span>\u{1F552} Zuletzt aktualisiert: <b>${esc(fmtVer(APP_VERSION))}</b></span>${window.ET_STANDALONE?'<button class="btn-g" id="ver-check">\u{1F504} Nach Updates suchen</button>':''}</div>
+    ${updInfo?`<div class="ver-new">\u{1F195} Neue Version vom ${esc(fmtVer(updInfo.version))} verfügbar <button class="wr-check" id="ver-apply">Jetzt aktualisieren</button></div>`:''}
+    ${APP_NOTES?`<div class="ver-notes">Neu in dieser Version: ${esc(APP_NOTES)}</div>`:''}
+    ${msg?`<div class="ver-notes">${msg}</div>`:''}`;
+  if(g('ver-check'))g('ver-check').onclick=()=>checkUpdate(true);
+  if(g('ver-apply'))g('ver-apply').onclick=applyUpdate;
+}
+function showUpdBar(){
+  const b=g('upd-bar');if(!b||!updInfo)return;
+  b.innerHTML=`<div class="updin"><span>\u{1F195} <b>Neue Version verfügbar</b>${updInfo.notes?' – '+esc(updInfo.notes):''}</span><button class="wr-check" id="upd-go">Jetzt aktualisieren</button></div>`;
+  b.style.display='block';
+  g('upd-go').onclick=applyUpdate;
+}
+async function checkUpdate(manual){
+  if(!window.ET_STANDALONE)return;
+  if(manual)renderVer('Suche …');
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json();
+    if(j&&j.version&&j.version>APP_VERSION){updInfo=j;showUpdBar();renderVer()}
+    else renderVer(manual?'✅ Du hast die neueste Version.':'');
+  }catch(e){renderVer(manual?'Konnte gerade nicht nach Updates suchen – bist du online?':'')}
+}
+function applyUpdate(){
+  try{flushPush();writeLocal()}catch(e){}
+  const v=updInfo?updInfo.version:String(Date.now());
+  location.replace(location.pathname+'?v='+encodeURIComponent(v));
+}
+renderVer();
+if(window.ET_STANDALONE){
+  setTimeout(()=>checkUpdate(false),1500);
+  updTimer=setInterval(()=>checkUpdate(false),10*60*1000);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkUpdate(false)});
 }
 
 renderSettings();
