@@ -2594,8 +2594,8 @@ async function syncPull(){
 const CLM='et7_claudeapp';
 const IS_MOBILE=/iPhone|iPad|Android/i.test(navigator.userAgent||'')||(/Mac/i.test(navigator.platform||'')&&navigator.maxTouchPoints>1);
 function claudeTarget(){const v=lsGet(CLM);if(v==='app'||v==='web')return v;return /Mac|Win/i.test(navigator.platform||'')&&!IS_MOBILE?'app':'web'}
-function fbCfg(){const f=(M&&M.fb)||{};const ok=f.id&&(f.type==='chat'||f.type==='project');return {mode:ok&&f.mode!=='new'?f.type:'new',type:f.type,id:f.id}}
-function parseClaudeLink(s){const m=String(s||'').match(/claude\.ai\/(chat|project)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);return m?{type:m[1].toLowerCase(),id:m[2].toLowerCase()}:null}
+function fbCfg(){const f=(M&&M.fb)||{};const ok=f.id&&(f.type==='chat'||f.type==='project');return {mode:ok&&f.mode!=='new'?f.type:'new',type:f.type,id:f.id,path:f.path||(f.type+'/'+f.id)}}
+function parseClaudeLink(s){const m=String(s||'').trim().match(/claude\.ai\/((?:code\/)?(chat|project)\/([A-Za-z0-9_-]{8,}))/i);return m?{type:m[2].toLowerCase(),id:m[3],path:m[1]}:null}
 const LEARNER='Du bist mein Englisch-Coach. Ich bin deutscher Muttersprachler, Niveau etwa B2 (Grammatik und Lesen sind okay), und will vor allem freier und sicherer sprechen – im Job (Industrie/Technik, Angebote, Meetings) und im Alltag. Ich übe mit meinem eigenen „English Trainer“.';
 const DS_SCHEMA=`1. **Gesamtnote 1–10** und je ein kurzer Satz zu Grammatik, Wortschatz, Natürlichkeit und Verständlichkeit. Bei Umschreiben-Übungen: welches Wort ein Zuhörer wohl erraten würde.
 2. **Fehler** als Tabelle: Mein Text | Richtig | Warum (kurz auf Deutsch). Nur echte Fehler und typisch deutsch klingende Formulierungen – erfinde keine.
@@ -2626,7 +2626,7 @@ function copySync(text){
 function openClaude(prompt){
   const copied=copySync(prompt);
   const c=fbCfg(),app=claudeTarget()==='app',base=app?'claude://claude.ai/':'https://claude.ai/';
-  const url=c.mode==='new'?base+'new?q='+encodeURIComponent(prompt.slice(0,13000)):base+c.type+'/'+c.id;
+  const url=c.mode==='new'?base+'new?q='+encodeURIComponent(prompt.slice(0,13000)):base+c.path;
   if(app)location.href=url;else window.open(url,'_blank','noopener');
   return copied;
 }
@@ -2666,7 +2666,7 @@ function grPrompt(l,txt){
     :`${core}\n\nBitte wie immer: richtig/falsch mit Korrektur, natürliche Version, 3 neue Übungssätze.`;
 }
 function fbSettingsHTML(){
-  const c=fbCfg(),f=(M&&M.fb)||{},link=f.id?`https://claude.ai/${f.type}/${f.id}`:'';
+  const c=fbCfg(),f=(M&&M.fb)||{},link=f.id?`https://claude.ai/${f.path||(f.type+'/'+f.id)}`:'';
   return `
       <div class="vb-hint" style="margin:4px 0 8px">„Feedback in Claude holen“ läuft über dein Claude-Abo, ohne Zusatzkosten.</div>
       <div class="vb-row" style="margin-bottom:8px">
@@ -2697,11 +2697,11 @@ function wireFbSettings(){
   g('st-fbsave').onclick=()=>{
     const L=parseClaudeLink(g('st-fblink').value);
     if(!L){msg('Das ist kein Claude-Link. Er muss so aussehen: https://claude.ai/project/… oder https://claude.ai/chat/…');return}
-    M.fb={mode:'fixed',type:L.type,id:L.id};saveM();
+    M.fb={mode:'fixed',type:L.type,id:L.id,path:L.path};saveM();
     msg('✅ Gespeichert – Feedback landet ab jetzt immer in deinem Coach-'+(L.type==='chat'?'Chat':'Projekt')+'.',true);
   };
   g('st-fbsetup').onclick=()=>{const ok=copySync(COACH_SETUP);msg(ok?'✅ Coach-Anweisungen kopiert – jetzt in Claude einfügen.':'Kopieren ging nicht.',ok)};
-  if(g('st-fbopen'))g('st-fbopen').onclick=()=>{const c=fbCfg(),app=claudeTarget()==='app',u=(app?'claude://claude.ai/':'https://claude.ai/')+c.type+'/'+c.id;if(app)location.href=u;else window.open(u,'_blank','noopener')};
+  if(g('st-fbopen'))g('st-fbopen').onclick=()=>{const c=fbCfg(),app=claudeTarget()==='app',u=(app?'claude://claude.ai/':'https://claude.ai/')+c.path;if(app)location.href=u;else window.open(u,'_blank','noopener')};
 }
 
 // ── EINSTELLUNGEN: Web-App (Feedback-Ziel, API-Key, Sync) ──
@@ -2739,8 +2739,8 @@ function renderSettings(){
 
 // ── VERSION & UPDATES ──
 // APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
-const APP_VERSION='2026-11-28T11:15:13Z';
-const APP_NOTES="Vorlesen jetzt mit Evan: alle Wörter, Beispielsätze und Grammatik-Beispiele als Aufnahmen.";
+const APP_VERSION='2026-11-28T11:56:07Z';
+const APP_NOTES="Feedback-Ziel akzeptiert jetzt auch neue Claude-Projekt-Links (claude.ai/code/project/…).";
 let updInfo=null,updTimer=null;
 function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
 function renderVer(msg){
