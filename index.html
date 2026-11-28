@@ -336,7 +336,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   <button class="btn-g gr-dash" id="go-gr">&#128208; Grammatik f&uuml;rs Sprechen</button>
   <div class="lbl" style="margin-top:24px">&#128266; Vorlese-Stimme</div>
   <div class="vbox" id="voice-box"></div>
-  <div class="lbl" style="margin-top:24px">&#9881;&#65039; Einstellungen</div>
+  <div class="lbl" id="set-lbl" style="margin-top:24px">&#9881;&#65039; Einstellungen</div>
   <div class="vbox" id="set-box"></div>
   <div class="syncst" id="sync-st"></div>
   <div class="verbox" id="ver-box"></div>
@@ -2681,7 +2681,7 @@ function wireFbSettings(){
   if(g('st-fbopen'))g('st-fbopen').onclick=()=>{const c=fbCfg(),app=claudeTarget()==='app',u=(app?'claude://claude.ai/':'https://claude.ai/')+c.type+'/'+c.id;if(app)location.href=u;else window.open(u,'_blank','noopener')};
 }
 
-// ── EINSTELLUNGEN: Web-App (API-Key, Sync) + Fortschritt übertragen ──
+// ── EINSTELLUNGEN: Web-App (Feedback-Ziel, API-Key, Sync) ──
 function renderSettings(){
   const el=g('set-box');if(!el)return;
   const W=!!window.ET_STANDALONE;
@@ -2706,14 +2706,8 @@ function renderSettings(){
       <div class="st-msg" id="st-tok-msg"></div>
     </div>`;
   }
-  h+=`
-    <div class="st-sec">
-      <div class="st-h">\u{1F4E6} Fortschritt übertragen</div>
-      <div class="vb-hint" style="margin:4px 0 8px">${W?'Lernstand aus dem Claude-Artefakt hierher holen: dort auf „Exportieren“, Text kopieren und hier unten einfügen.':'Lernstand in die Web-App mitnehmen: „Exportieren“, den Text kopieren und in der Web-App unter Einstellungen einfügen.'}</div>
-      <div class="vb-row"><button class="btn-g" id="st-exp">⬆ Exportieren</button><button class="btn-g" id="st-imp-open">⬇ Importieren</button></div>
-      <div id="st-xfer"></div>
-    </div>`;
   el.innerHTML=h;
+  const lb=g('set-lbl');if(lb)lb.style.display=W?'':'none';el.style.display=W?'':'none';
   if(W){
     const K=window.ET_web.keys;
     const msg=(id,t,ok)=>{const m=g(id);m.textContent=t;m.style.color=ok?'var(--gn)':'var(--rd)'};
@@ -2729,32 +2723,13 @@ function renderSettings(){
     };
     if(g('st-tok-del'))g('st-tok-del').onclick=()=>{lsSet(K.GT,null);lsSet(K.GI,null);location.reload()};
   }
-  g('st-exp').onclick=()=>{
-    const txt=JSON.stringify(Object.assign({app:'english-trainer'},snapshotLocal()));
-    g('st-xfer').innerHTML=`<textarea class="dsta st-ta" id="st-exp-ta" readonly></textarea><div class="vb-row" style="margin-top:6px"><button class="btn-g" id="st-copy">\u{1F4CB} Kopieren</button><span class="st-msg" id="st-copy-msg"></span></div>`;
-    const ta=g('st-exp-ta');ta.value=txt;ta.focus();ta.select();
-    g('st-copy').onclick=async()=>{ta.select();let ok=false;try{await navigator.clipboard.writeText(txt);ok=true}catch(e){try{ok=document.execCommand('copy')}catch(e2){}}const m=g('st-copy-msg');m.textContent=ok?'✅ Kopiert':'Markiert – jetzt mit ⌘C bzw. Strg+C kopieren';m.style.color=ok?'var(--gn)':'var(--t2)'};
-  };
-  g('st-imp-open').onclick=()=>{
-    g('st-xfer').innerHTML=`<textarea class="dsta st-ta" id="st-imp-ta" placeholder="Exportierten Text hier einfügen …"></textarea><div class="vb-row" style="margin-top:6px"><button class="wr-check" id="st-imp">Importieren</button><span class="st-msg" id="st-imp-msg"></span></div>`;
-    g('st-imp-ta').focus();
-    g('st-imp').onclick=()=>{
-      const m=g('st-imp-msg');
-      let d=null;try{d=JSON.parse(g('st-imp-ta').value.trim())}catch(e){}
-      if(!d||typeof d.P!=='object'){m.textContent='❌ Das ist kein gültiger Export.';m.style.color='var(--rd)';return}
-      const r=mergeAll(Object.assign(snapshotLocal(),{resetAt:0}),{P:d.P||{},M:d.M||{},D:d.D||{},ts:d.ts||Date.now(),resetAt:0});
-      P=r.P;M=r.M;DSM=r.D;writeLocal();schedulePush();
-      const n=Object.keys(P).length;
-      m.textContent='✅ Übernommen – '+n+' Vokabeln mit Lernstand.';m.style.color='var(--gn)';
-      renderDash();
-    };
-  };
+
 }
 
 // ── VERSION & UPDATES ──
 // APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
-const APP_VERSION='2026-11-28T10:28:22Z';
-const APP_NOTES="Update-Anzeige: die App zeigt, wann sie zuletzt aktualisiert wurde, und meldet neue Versionen selbst.";
+const APP_VERSION='2026-11-28T10:31:39Z';
+const APP_NOTES="Export/Import des Lernstands entfernt.";
 let updInfo=null,updTimer=null;
 function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
 function renderVer(msg){
