@@ -418,6 +418,7 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   const web=location.protocol==='file:'||/(^|\.)github\.io$|^localhost$|^127\.0\.0\.1$|\.test$/i.test(location.hostname);
   if(!web||(window.claude&&window.claude.use))return;
   window.ET_STANDALONE=true;
+  const ET_SYNC=false; // Sync zwischen Geraeten (GitHub-Gist) vorerst ausgeschaltet
   const KK='et7_apikey',GT='et7_ghtoken',GI='et7_gistid',GF='english-trainer-sync.json';
   const ls=k=>{try{return localStorage.getItem(k)||''}catch(e){return''}};
   const err=(code,message)=>Object.assign(new Error(message),{code});
@@ -492,8 +493,8 @@ main{max-width:960px;margin:0 auto;padding:24px 16px}
   window.ET_HANDOFF=!ls(KK);
   window.claude={use:async name=>{
     if(name==='sample')return ls(KK)?sample:null;
-    if(name==='db')return ls(GT)?db:null;
-    if(name==='user')return ls(GT)?{id:async()=>'me'}:null;
+    if(name==='db')return ET_SYNC&&ls(GT)?db:null;
+    if(name==='user')return ET_SYNC&&ls(GT)?{id:async()=>'me'}:null;
     return null;
   }};
 })();
@@ -2481,7 +2482,7 @@ function writeLocal(){try{localStorage.setItem(SK,JSON.stringify(P));localStorag
 function setSync(m){
   syncMode=m;const el=g('sync-st');if(!el)return;
   el.textContent={ok:'\u2601\uFE0F Fortschritt wird \u00fcber dein Claude-Konto synchronisiert',wait:'\u2601\uFE0F Verbinde mit deinem Claude-Konto \u2026',local:'\u{1F4BE} Fortschritt nur auf diesem Ger\u00e4t gespeichert (Synchronisierung hier nicht verf\u00fcgbar)',err:'\u26A0\uFE0F Synchronisierung gerade gest\u00f6rt \u2013 lokal gespeichert, wird sp\u00e4ter nachgeholt'}[m]||'';
-  if(window.ET_STANDALONE)el.textContent=el.textContent.replace('dein Claude-Konto','GitHub').replace('deinem Claude-Konto','GitHub').replace('(Synchronisierung hier nicht verf\u00fcgbar)','\u2013 Sync unten in den Einstellungen einrichten');
+  if(window.ET_STANDALONE)el.textContent=el.textContent.replace('dein Claude-Konto','GitHub').replace('deinem Claude-Konto','GitHub').replace('(Synchronisierung hier nicht verf\u00fcgbar)','');
 }
 function schedulePush(){touchLocal();if(!syncRef)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>{syncTimer=null;syncPush()},1500)}
 function snapshotLocal(){return {v:1,P,M,D:DSM,ts:lsNum(TSK)||Date.now(),resetAt:lsNum(RSK)}}
@@ -2699,11 +2700,6 @@ function renderSettings(){
       <div class="st-msg" id="st-key-msg"></div>
       </details>
     </div>
-    <div class="st-sec">
-      <div class="st-h">☁️ Sync zwischen Handy & PC ${hasTok?'<span class="st-ok">aktiv</span>':'<span class="st-off">aus</span>'}</div>
-      <div class="vb-hint" style="margin:4px 0 8px">Dein Lernstand wird in einem privaten GitHub-Gist gespeichert. Erstelle <a href="https://github.com/settings/tokens/new?scopes=gist&description=English%20Trainer" target="_blank" rel="noopener">hier einen Token</a> (nur Häkchen bei „gist“, Ablaufdatum am besten „No expiration“) und trag denselben Token auf jedem Gerät ein.</div>
-      <div class="vb-row"><input class="brsearch" type="password" id="st-tok" placeholder="${hasTok?'•••••• gespeichert':'ghp_… oder github_pat_…'}" autocomplete="off"><button class="btn-g" id="st-tok-save">Speichern</button>${hasTok?'<button class="btn-g" id="st-tok-del">Entfernen</button>':''}</div>
-      <div class="st-msg" id="st-tok-msg"></div>
     </div>`;
   }
   el.innerHTML=h;
@@ -2715,21 +2711,14 @@ function renderSettings(){
     wireFbSettings();
     if(g('st-key-test'))g('st-key-test').onclick=async()=>{msg('st-key-msg','Teste …',true);try{const r=await window.ET_web.ask('Reply with exactly: OK',{modelTier:'quick',maxTokens:10});msg('st-key-msg','✅ Funktioniert ('+String(r.text).trim().slice(0,20)+')',true)}catch(e){msg('st-key-msg','❌ '+(e.message||'Fehler'))}};
     if(g('st-key-del'))g('st-key-del').onclick=()=>{lsSet(K.KK,null);location.reload()};
-    g('st-tok-save').onclick=async()=>{
-      const v=g('st-tok').value.trim();if(v.length<20){msg('st-tok-msg','Bitte den kompletten Token einfügen.');return}
-      lsSet(K.GT,v);lsSet(K.GI,null);msg('st-tok-msg','Prüfe Token …',true);
-      try{await window.ET_web.findGist();msg('st-tok-msg','✅ Verbunden – die Seite lädt neu …',true);setTimeout(()=>location.reload(),700)}
-      catch(e){lsSet(K.GT,null);msg('st-tok-msg','❌ Token funktioniert nicht ('+(e.message||'Fehler')+'). Hat er das Häkchen bei „gist“?')}
-    };
-    if(g('st-tok-del'))g('st-tok-del').onclick=()=>{lsSet(K.GT,null);lsSet(K.GI,null);location.reload()};
   }
 
 }
 
 // ── VERSION & UPDATES ──
 // APP_VERSION/APP_NOTES setzt tools/release.py bei jeder Veroeffentlichung; version.json im Repo enthaelt die neueste Version.
-const APP_VERSION='2026-11-28T10:31:39Z';
-const APP_NOTES="Export/Import des Lernstands entfernt.";
+const APP_VERSION='2026-11-28T10:32:38Z';
+const APP_NOTES="Sync zwischen Handy und PC vorerst entfernt.";
 let updInfo=null,updTimer=null;
 function fmtVer(v){try{return new Date(v).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Uhr'}catch(e){return v}}
 function renderVer(msg){
